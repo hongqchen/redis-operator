@@ -1,0 +1,16 @@
+domain: hongqchen
+layout:
+- go.kubebuilder.io/v3
+projectName: redis-operator
+repo: github.com/hongqchen/redis-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: hongqchen
+  group: redis
+  kind: CustomRedis
+  path: github.com/hongqchen/redis-operator/api/v1beta1
+  version: v1beta1
+version: "3"

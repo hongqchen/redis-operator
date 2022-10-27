@@ -1,0 +1,24 @@
+# permissions for end users to edit customredis.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: customredis-editor-role
+rules:
+- apiGroups:
+  - redis.hongqchen
+  resources:
+  - customredis
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - redis.hongqchen
+  resources:
+  - customredis/status
+  verbs:
+  - get

@@ -1,0 +1,6 @@
+apiVersion: redis.hongqchen/v1beta1
+kind: CustomRedis
+metadata:
+  name: customredis-sample
+spec:
+  # TODO(user): Add fields here
