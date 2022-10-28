@@ -1,0 +1,21 @@
+apiVersion: redis.hongqchen/v1beta1
+kind: CustomRedis
+metadata:
+  name: redis-test
+spec:
+  replicas: 3
+  clusterMode: master-slave
+  templates:
+    initImage: busybox:1.28
+    image: registry.cn-chengdu.aliyuncs.com/hongqchen/redis:7.0.4
+  redisConfig:
+    "cluster-node-timeout": "5000"
+    "dir": "/data/redis"
+    "port": "6379"
+    "appendonly": "yes"
+#  volumeConfig:
+#    accessModes:
+#      - ReadWriteOnce
+#    resources:
+#      requests:
+#        storage: 8Gi

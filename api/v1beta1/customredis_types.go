@@ -17,29 +17,65 @@ limitations under the License.
 package v1beta1
 
 import (
+	"github.com/hongqchen/redis-operator/pkg/util"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type ClusterMode string
+
+const (
+	MasterSlave ClusterMode = "master-slave"
+	Sentinel    ClusterMode = "sentinel"
+	Cluster     ClusterMode = "cluster"
+)
 
 // CustomRedisSpec defines the desired state of CustomRedis
 type CustomRedisSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +kubebuilder:validation:Minimum=3
+	Replicas *int32 `json:"replicas"`
 
-	// Foo is an example field of CustomRedis. Edit customredis_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +kubebuilder:validation:Enum=master-slave;sentinel;cluster
+	ClusterMode ClusterMode       `json:"clusterMode"`
+	Templates   PodConfig         `json:"templates"`
+	RedisConfig map[string]string `json:"redisConfig"`
+
+	// +kubebuilder:default:=3
+	SentinelNum  *int32                            `json:"sentinelNum,omitempty"`
+	VolumeConfig *corev1.PersistentVolumeClaimSpec `json:"volumeConfig,omitempty"`
+}
+
+type PodConfig struct {
+	// +kubebuilder:default:="busybox:1.28"
+	InitImage string `json:"initImage"`
+
+	// +kubebuilder:validation:MinLength=5
+	Image string `json:"image"`
+
+	// +kubebuilder:validation:Enum=Always;Never;IfNotPresent
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// UpdateStrategy appv1.StatefulSetUpdateStrategy `json:"updateStrategy,omitempty"`
 }
 
 // CustomRedisStatus defines the observed state of CustomRedis
 type CustomRedisStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	Phase util.CustomRedisPhase `json:"phase"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=cr
+// +kubebuilder:printcolumn:name="ClusterMode",type=string,JSONPath=`.spec.clusterMode`
+// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.spec.replicas`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 
 // CustomRedis is the Schema for the customredis API
 type CustomRedis struct {
@@ -48,6 +84,18 @@ type CustomRedis struct {
 
 	Spec   CustomRedisSpec   `json:"spec,omitempty"`
 	Status CustomRedisStatus `json:"status,omitempty"`
+}
+
+func (crs *CustomRedisStatus) setDefault(cr *CustomRedis) bool {
+	if cr.Status.Phase == "" {
+		cr.Status.Phase = util.CustomRedisCreating
+		return true
+	}
+	return false
+}
+
+func (cr *CustomRedis) SetDefaultStatus() bool {
+	return cr.Status.setDefault(cr)
 }
 
 //+kubebuilder:object:root=true
