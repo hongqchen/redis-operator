@@ -24,13 +24,13 @@ func NewCheckAndHeal(cl client.Client, logger logr.Logger) *CheckAndHeal {
 	return &CheckAndHeal{
 		logger:       logger,
 		k8sService:   NewkubernetesService(cl, logger),
-		redisService: NewRedisService(),
+		redisService: NewRedisService(logger),
 	}
 }
 
 // CheckNumberOfMasters 检查集群中 master 节点数量
 func (ch *CheckAndHeal) CheckNumberOfMasters(cRedis *v1beta1.CustomRedis) error {
-	ch.logger.Info("Checking the number of cluster masters")
+	ch.logger.V(1).Info("Checking the number of cluster masters")
 	masterIPs, err := ch.k8sService.GetMasterIPs(cRedis)
 	if err != nil {
 		return err
@@ -47,7 +47,7 @@ func (ch *CheckAndHeal) CheckNumberOfMasters(cRedis *v1beta1.CustomRedis) error 
 }
 
 func (ch *CheckAndHeal) healNoMasters(cRedis *v1beta1.CustomRedis) error {
-	ch.logger.Info("Healing no master in cluster")
+	ch.logger.V(1).Info("Healing no master in cluster")
 	redisNodes, err := ch.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (ch *CheckAndHeal) healNoMasters(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (ch *CheckAndHeal) healOneMaster(cRedis *v1beta1.CustomRedis, currentMaster string) error {
-	ch.logger.Info("Healing only one master in cluster")
+	ch.logger.V(1).Info("Healing only one master in cluster")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
 
@@ -100,7 +100,7 @@ func (ch *CheckAndHeal) healOneMaster(cRedis *v1beta1.CustomRedis, currentMaster
 }
 
 func (ch *CheckAndHeal) healManyMasters(cRedis *v1beta1.CustomRedis) error {
-	ch.logger.Info("Healing many masters in cluster")
+	ch.logger.V(1).Info("Healing many masters in cluster")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
 
@@ -155,6 +155,7 @@ func (ch *CheckAndHeal) healManyMasters(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (ch *CheckAndHeal) getSentinelMonitor(cRedis *v1beta1.CustomRedis) (string, error) {
+	ch.logger.V(1).Info("Getting sentinel monitor info")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
 	sentinelName := fmt.Sprintf("%s-%s", name, util.SentinelResourceSuffix)

@@ -56,7 +56,7 @@ func NewkubernetesService(cl client.Client, logger logr.Logger) *KubernetesServi
 	return &KubernetesService{
 		logger:       logger,
 		k8sClient:    kubernetes.NewClient(cl),
-		redisService: NewRedisService(),
+		redisService: NewRedisService(logger),
 	}
 }
 
@@ -73,6 +73,7 @@ func (ks *KubernetesService) getObj(cRedis *v1beta1.CustomRedis) (interface{}, e
 }
 
 func (ks *KubernetesService) GetReplicas(cRedis *v1beta1.CustomRedis) (int32, error) {
+	ks.logger.V(1).Info("Getting resource sepc.relicas")
 	res, err := ks.getObj(cRedis)
 	if err != nil {
 		return 0, err
@@ -90,6 +91,7 @@ func (ks *KubernetesService) GetReplicas(cRedis *v1beta1.CustomRedis) (int32, er
 
 // For example [{"name":"pod_name","ip":"pod_ip"},{"name2":"pod_name2","ip2":"pod_ip2"}]
 func (ks *KubernetesService) GetStatefulsetReadyPods(name, namespace string) ([]corev1.Pod, error) {
+	ks.logger.V(1).Info("Getting all ready pods with statefulset")
 	var readyPods []corev1.Pod
 
 	// 从 statefulset 获取 Pod selector
@@ -117,6 +119,7 @@ func (ks *KubernetesService) GetStatefulsetReadyPods(name, namespace string) ([]
 }
 
 func (ks *KubernetesService) GetDeploymentReadyPods(name, namespace string) ([]corev1.Pod, error) {
+	ks.logger.V(1).Info("Getting all ready pods with deployment")
 	var readyPods []corev1.Pod
 
 	storedObj, err := ks.k8sClient.GetDeployment(name, namespace)
@@ -143,6 +146,7 @@ func (ks *KubernetesService) GetDeploymentReadyPods(name, namespace string) ([]c
 }
 
 func (ks *KubernetesService) GetMasterIPs(cRedis *v1beta1.CustomRedis) ([]string, error) {
+	ks.logger.V(1).Info("Getting master IPs in cluster")
 	var masterIPs []string
 
 	pods, err := ks.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
@@ -166,6 +170,7 @@ func (ks *KubernetesService) GetMasterIPs(cRedis *v1beta1.CustomRedis) ([]string
 }
 
 func (ks *KubernetesService) UpdatePodIfExists(podObj *corev1.Pod) error {
+	ks.logger.V(1).Info("Updating pod")
 	_, err := ks.k8sClient.GetPod(podObj.Name, podObj.Namespace)
 	if err != nil {
 		return err
@@ -176,49 +181,61 @@ func (ks *KubernetesService) UpdatePodIfExists(podObj *corev1.Pod) error {
 }
 
 func (ks *KubernetesService) GetConfigmap(name, namespace string) (*corev1.ConfigMap, error) {
+	ks.logger.V(1).Info("Getting configmap")
 	return ks.k8sClient.GetConfigmap(name, namespace)
 }
 
 func (ks *KubernetesService) CreateConfigmap(configmap *corev1.ConfigMap) error {
+	ks.logger.V(1).Info("Creating configmap")
 	return ks.k8sClient.CreateConfigmap(configmap)
 }
 
 func (ks *KubernetesService) UpdateConfigmap(configmap *corev1.ConfigMap) error {
+	ks.logger.V(1).Info("Updating configmap")
 	return ks.k8sClient.UpdateConfigmap(configmap)
 }
 
 func (ks *KubernetesService) GetStatefulset(name, namespace string) (*appv1.StatefulSet, error) {
+	ks.logger.V(1).Info("Getting statefulset")
 	return ks.k8sClient.GetStatefulset(name, namespace)
 }
 
 func (ks *KubernetesService) CreateStatefulset(sts *appv1.StatefulSet) error {
+	ks.logger.V(1).Info("Creating statefulset")
 	return ks.k8sClient.CreateStatefulset(sts)
 }
 
 func (ks *KubernetesService) UpdateStatefulset(sts *appv1.StatefulSet) error {
+	ks.logger.V(1).Info("Updating statefulset")
 	return ks.k8sClient.UpdateStatefulset(sts)
 }
 
 func (ks *KubernetesService) GetService(name, namespace string) (*corev1.Service, error) {
+	ks.logger.V(1).Info("Getting service")
 	return ks.k8sClient.GetService(name, namespace)
 }
 
 func (ks *KubernetesService) CreateService(service *corev1.Service) error {
+	ks.logger.V(1).Info("Creating service")
 	return ks.k8sClient.CreateService(service)
 }
 
 func (ks *KubernetesService) UpdateService(service *corev1.Service) error {
+	ks.logger.V(1).Info("Updating service")
 	return ks.k8sClient.UpdateService(service)
 }
 
 func (ks *KubernetesService) GetDeployment(name, namespace string) (*appv1.Deployment, error) {
+	ks.logger.V(1).Info("Getting deployment")
 	return ks.k8sClient.GetDeployment(name, namespace)
 }
 
 func (ks *KubernetesService) CreateDeployment(deploy *appv1.Deployment) error {
+	ks.logger.V(1).Info("Creating deployment")
 	return ks.k8sClient.CreateDeployment(deploy)
 }
 
 func (ks *KubernetesService) UpdateDeployment(deploy *appv1.Deployment) error {
+	ks.logger.V(1).Info("Updating deployment")
 	return ks.k8sClient.UpdateDeployment(deploy)
 }

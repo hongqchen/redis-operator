@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/hongqchen/redis-operator/pkg/controller"
 	"github.com/hongqchen/redis-operator/pkg/util"
@@ -70,9 +71,11 @@ func (r *CustomRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	logger.Info("Reconciling")
 
+	logger.V(3).Info(fmt.Sprintf("Instance info: %+v", cRedis))
+
 	// 首次创建，更新 status 为 creating
 	if cRedis.SetDefaultStatus() {
-		logger.V(2).Info("Setting status -- creating")
+		logger.V(2).Info("Setting status to creating")
 		if err := r.Status().Update(ctx, cRedis); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -83,7 +86,7 @@ func (r *CustomRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{RequeueAfter: requeue}, nil
 	}
 
-	logger.V(2).Info("Setting status -- running")
+	logger.V(2).Info("Setting status to running")
 	if cRedis.Status.Phase != util.CustomRedisRunning {
 		cRedis.Status.Phase = util.CustomRedisRunning
 		if err := r.Status().Update(ctx, cRedis); err != nil {
@@ -91,6 +94,7 @@ func (r *CustomRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	logger.Info("Reconcile complete")
 	return ctrl.Result{}, nil
 }
 

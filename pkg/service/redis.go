@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/go-logr/logr"
 	"github.com/hongqchen/redis-operator/api/v1beta1"
 	"github.com/hongqchen/redis-operator/pkg/client/redis"
 	"github.com/pkg/errors"
@@ -29,20 +30,23 @@ type RedisServicer interface {
 	IsMaster(cRedis *v1beta1.CustomRedis, ip string) (bool, error)
 
 	SetOldestAsMaster(cRedis *v1beta1.CustomRedis, pods []corev1.Pod) error
-	SetExceptOldestAsSlave(cRedis *v1beta1.CustomRedis, pods []corev1.Pod) error
+	//SetExceptOldestAsSlave(cRedis *v1beta1.CustomRedis, pods []corev1.Pod) error
 }
 
 type RedisService struct {
+	logger logr.Logger
 	client redis.Clienter
 }
 
-func NewRedisService() *RedisService {
+func NewRedisService(logger logr.Logger) *RedisService {
 	return &RedisService{
+		logger: logger,
 		client: redis.NewClient(),
 	}
 }
 
 func (rs *RedisService) GetReplication(cRedis *v1beta1.CustomRedis, ip string) (string, error) {
+	rs.logger.V(1).Info("Getting replication info", "currentIP", ip)
 	port, password, err := rs.getPortAndPassword(cRedis)
 	if err != nil {
 		return "", err
@@ -52,6 +56,7 @@ func (rs *RedisService) GetReplication(cRedis *v1beta1.CustomRedis, ip string) (
 }
 
 func (rs *RedisService) IsMaster(cRedis *v1beta1.CustomRedis, ip string) (bool, error) {
+	rs.logger.V(1).Info("Trying to determine whether it is master", "currentIP", ip)
 	replication, err := rs.GetReplication(cRedis, ip)
 	if err != nil {
 		return false, err
@@ -61,6 +66,7 @@ func (rs *RedisService) IsMaster(cRedis *v1beta1.CustomRedis, ip string) (bool, 
 }
 
 func (rs *RedisService) SetAsMaster(cRedis *v1beta1.CustomRedis, ip string) error {
+	rs.logger.V(1).Info("Setting as master", "currentIP", ip)
 	port, password, err := rs.getPortAndPassword(cRedis)
 	if err != nil {
 		return err
@@ -70,6 +76,7 @@ func (rs *RedisService) SetAsMaster(cRedis *v1beta1.CustomRedis, ip string) erro
 }
 
 func (rs *RedisService) SetAsSlave(cRedis *v1beta1.CustomRedis, slaveIP, masterIP string) error {
+	rs.logger.V(1).Info("Setting as slave", "currentIP", slaveIP, "masterIP", masterIP)
 	port, password, err := rs.getPortAndPassword(cRedis)
 	if err != nil {
 		return err
@@ -80,6 +87,7 @@ func (rs *RedisService) SetAsSlave(cRedis *v1beta1.CustomRedis, slaveIP, masterI
 
 // Set the pod with the longest creation time as the master
 func (rs *RedisService) SetOldestAsMaster(cRedis *v1beta1.CustomRedis, pods []corev1.Pod) error {
+	rs.logger.V(1).Info("Setting the oldest pod as master")
 	if len(pods) < 1 {
 		return errors.New("no ready pods available")
 	}
@@ -114,34 +122,37 @@ func (rs *RedisService) SetOldestAsMaster(cRedis *v1beta1.CustomRedis, pods []co
 	return nil
 }
 
-func (rs *RedisService) SetExceptOldestAsSlave(cRedis *v1beta1.CustomRedis, pods []corev1.Pod) error {
-	if len(pods) < 1 {
-		return errors.New("no ready pods available")
-	}
-
-	// Sort by creation time in ascending order
-	// slice[0] is oldest pod
-	sort.Slice(pods, func(i, j int) bool {
-		return pods[i].CreationTimestamp.Before(&pods[j].CreationTimestamp)
-	})
-
-	masterIP := pods[0].Status.PodIP
-	slavePods := pods[1:]
-	for _, pod := range slavePods {
-		if err := rs.SetAsSlave(cRedis, pod.Status.PodIP, masterIP); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
+//func (rs *RedisService) SetExceptOldestAsSlave(cRedis *v1beta1.CustomRedis, pods []corev1.Pod) error {
+//	rs.logger.V(1).Info("Setting the oldest pod as master")
+//	if len(pods) < 1 {
+//		return errors.New("no ready pods available")
+//	}
+//
+//	// Sort by creation time in ascending order
+//	// slice[0] is oldest pod
+//	sort.Slice(pods, func(i, j int) bool {
+//		return pods[i].CreationTimestamp.Before(&pods[j].CreationTimestamp)
+//	})
+//
+//	masterIP := pods[0].Status.PodIP
+//	slavePods := pods[1:]
+//	for _, pod := range slavePods {
+//		if err := rs.SetAsSlave(cRedis, pod.Status.PodIP, masterIP); err != nil {
+//			return err
+//		}
+//	}
+//
+//	return nil
+//}
 
 func (rs *RedisService) GetSentinelMonitor(cRedis *v1beta1.CustomRedis, sentienlIP string) (string, string, error) {
+	rs.logger.V(1).Info("Getting sentinel monitor info", "currentIP", sentienlIP)
 	_, password, _ := rs.getPortAndPassword(cRedis)
 	return rs.client.GetSentinelMonitor(sentienlIP, password)
 }
 
 func (rs *RedisService) SetSentinelMonitor(cRedis *v1beta1.CustomRedis, sentinelIP, masterIP string) error {
+	rs.logger.V(1).Info("Setting the monitor for sentinel nodes", "sentinelIP", sentinelIP, "masterIP", masterIP)
 	port, password, err := rs.getPortAndPassword(cRedis)
 	if err != nil {
 		return err
@@ -157,6 +168,7 @@ func (rs *RedisService) SetSentinelMonitor(cRedis *v1beta1.CustomRedis, sentinel
 }
 
 func (rs *RedisService) GetReplicationOfMasterHost(cRedis *v1beta1.CustomRedis, ip string) (string, error) {
+	rs.logger.V(1).Info("Getting the masterIP of the sentinel node", "sentinelIP", ip)
 	replication, err := rs.GetReplication(cRedis, ip)
 	if err != nil {
 		return "", err

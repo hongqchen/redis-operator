@@ -27,10 +27,10 @@ func (rh *RedisHandler) Sync(cRedis *v1beta1.CustomRedis) time.Duration {
 	// 判断不同模式集群
 	switch cRedis.Spec.ClusterMode {
 	case v1beta1.MasterSlave:
-		rh.logger.Info("Starting master-slave resource sync action")
+		rh.logger.V(1).Info("Starting master-slave resource sync action")
 		return util.ErrorHandle(rh.logger, rh.syncMasterSlave(cRedis))
 	case v1beta1.Sentinel:
-		rh.logger.Info("Starting sentinel resource sync action")
+		rh.logger.V(1).Info("Starting sentinel resource sync action")
 		return util.ErrorHandle(rh.logger, rh.syncSentinel(cRedis))
 	}
 

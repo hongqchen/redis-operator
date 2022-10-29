@@ -42,12 +42,12 @@ func NewEnsure(cl client.Client, logger logr.Logger) *Ensure {
 		logger:       logger,
 		generate:     newGenerate(),
 		k8sService:   NewkubernetesService(cl, logger),
-		redisService: NewRedisService(),
+		redisService: NewRedisService(logger),
 	}
 }
 
 func (e *Ensure) EnsureConfigmap(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring configmap")
+	e.logger.V(1).Info("Ensuring configmap")
 	baseCm := &corev1.ConfigMap{}
 
 	if cRedis.Spec.ClusterMode == v1beta1.MasterSlave {
@@ -58,37 +58,48 @@ func (e *Ensure) EnsureConfigmap(cRedis *v1beta1.CustomRedis) error {
 		baseCm = e.generate.configmapForSentinel(cRedis)
 	}
 
+	e.logger.V(3).Info(fmt.Sprintf("Configmap info: %+v\n", baseCm))
+
 	if _, err := e.k8sService.GetConfigmap(cRedis.Name, cRedis.Namespace); err != nil {
 		if apierror.IsNotFound(err) {
 			// configmap 不存在，需要创建
+			e.logger.V(2).Info("Configmap not found")
 			return e.k8sService.CreateConfigmap(baseCm)
 		}
 		return err
 	}
 
 	// configmap 已存在，更新
+	e.logger.V(2).Info("Configmap already exists, need to update it")
 	return e.k8sService.UpdateConfigmap(baseCm)
 }
 
 func (e *Ensure) EnsureStatefulset(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring statefulset")
+	e.logger.V(1).Info("Ensuring statefulset")
 	sts := e.generate.statefulset(cRedis)
+
+	e.logger.V(3).Info(fmt.Sprintf("Statefulset info: %+v\n", sts))
 
 	if _, err := e.k8sService.GetStatefulset(cRedis.Name, cRedis.Namespace); err != nil {
 		if apierror.IsNotFound(err) {
+			e.logger.V(2).Info("Statefulset not found")
 			return e.k8sService.CreateStatefulset(sts)
 		}
 		return err
 	}
 
+	e.logger.V(2).Info("Statefulset already exists, need to update it")
 	return e.k8sService.UpdateStatefulset(sts)
 }
 
 func (e *Ensure) EnsureService(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring service")
+	e.logger.V(1).Info("Ensuring service")
 	namespace := cRedis.Namespace
 
 	services := e.generate.service(cRedis)
+
+	e.logger.V(3).Info(fmt.Sprintf("Service length: %d, detail: %+v\n", len(services), services))
+
 	for serviceName, serviceObj := range services {
 		svcName := serviceName
 		svc := serviceObj
@@ -122,9 +133,10 @@ func (e *Ensure) EnsureDeployment(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsurePodReady(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring all pods are ready")
+	e.logger.V(1).Info("Ensuring all pods are ready")
 	switch cRedis.Spec.ClusterMode {
 	case v1beta1.MasterSlave:
+		e.logger.V(2).Info("Current mode master-slave")
 		pods, err := e.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
 		if err != nil {
 			return err
@@ -135,6 +147,7 @@ func (e *Ensure) EnsurePodReady(cRedis *v1beta1.CustomRedis) error {
 		}
 		return nil
 	case v1beta1.Sentinel:
+		e.logger.V(2).Info("Current mode sentinel")
 		// 判断 ready redis Pod 数量是否匹配 spec.replices
 		redisNodes, err := e.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
 		if err != nil {
@@ -157,7 +170,7 @@ func (e *Ensure) EnsurePodReady(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsurePodOwner(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring a second owner references for pod")
+	e.logger.V(1).Info("Ensuring a second owner references for pod")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
 	sentinelName := fmt.Sprintf("%s-%s", cRedis.Name, util.SentinelResourceSuffix)
@@ -183,6 +196,8 @@ func (e *Ensure) EnsurePodOwner(cRedis *v1beta1.CustomRedis) error {
 			allPods = append(allPods, sentinelPod)
 		}
 	}
+
+	e.logger.V(3).Info(fmt.Sprintf("Pods nums: %d, detail: %+v\n", len(allPods), allPods))
 
 	// 遍历所有 Pod，添加 cr 所属 owner
 	for _, pod := range allPods {
@@ -265,11 +280,14 @@ func (e *Ensure) EnsureSentinelMonitor(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsureSlaveOfMaster(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring all slave pods are listening to the correct master")
+	e.logger.V(1).Info("Ensuring all slave pods are listening to the correct master")
 	masterIPs, err := e.k8sService.GetMasterIPs(cRedis)
 	if err != nil {
 		return err
 	}
+
+	e.logger.V(3).Info(fmt.Sprintf("MasterIps length: %d, detail: %+v\n", len(masterIPs), masterIPs))
+
 	if len(masterIPs) != 1 {
 		return util.ManyMastersErr
 	}
@@ -283,6 +301,7 @@ func (e *Ensure) EnsureSlaveOfMaster(cRedis *v1beta1.CustomRedis) error {
 		return err
 	}
 
+	e.logger.V(3).Info(fmt.Sprintf("Redis nodes length: %d, detail: %+v\n", len(redisNodes), redisNodes))
 	for _, redisNode := range redisNodes {
 		slaveIP := redisNode.Status.PodIP
 		if slaveIP == masterIP {
@@ -307,7 +326,7 @@ func (e *Ensure) EnsureSlaveOfMaster(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsureLabels(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring pod's label")
+	e.logger.V(1).Info("Ensuring pod's label")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
 	//sentinelName := fmt.Sprintf("%s-%s", name, util.SentinelResourceSuffix)
