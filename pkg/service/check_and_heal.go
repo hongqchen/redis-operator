@@ -7,6 +7,7 @@ import (
 	"github.com/hongqchen/redis-operator/pkg/util"
 	"github.com/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sort"
 )
 
 type CheckAndHealer interface {
@@ -39,14 +40,14 @@ func (ch *CheckAndHeal) CheckNumberOfMasters(cRedis *v1beta1.CustomRedis) error 
 	case 0:
 		return ch.healNoMasters(cRedis)
 	case 1:
-		return nil
+		return ch.healOneMaster(cRedis, masterIPs[0])
 	default:
 		return ch.healManyMasters(cRedis)
 	}
 }
 
 func (ch *CheckAndHeal) healNoMasters(cRedis *v1beta1.CustomRedis) error {
-	ch.logger.Info("Healing no master")
+	ch.logger.Info("Healing no master in cluster")
 	redisNodes, err := ch.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
 	if err != nil {
 		return err
@@ -73,7 +74,33 @@ func (ch *CheckAndHeal) healNoMasters(cRedis *v1beta1.CustomRedis) error {
 	return errors.New("unknown error")
 }
 
+func (ch *CheckAndHeal) healOneMaster(cRedis *v1beta1.CustomRedis, currentMaster string) error {
+	ch.logger.Info("Healing only one master in cluster")
+	name := cRedis.Name
+	namespace := cRedis.Namespace
+
+	// 获取集群中所有 redis pod
+	redisNodes, err := ch.k8sService.GetStatefulsetReadyPods(name, namespace)
+	if err != nil {
+		return err
+	}
+
+	// 按照创建时间排序，slice[0] 为创建时间最长的 Pod
+	sort.Slice(redisNodes, func(i, j int) bool {
+		return redisNodes[i].CreationTimestamp.Before(&redisNodes[j].CreationTimestamp)
+	})
+
+	// 列表中最后一个 Pod IP 等于当前 master IP
+	// 说明 master 被删除重建过，不应作为集群 master
+	if redisNodes[len(redisNodes)-1].Status.PodIP == currentMaster {
+		return util.NoMasterErr
+	}
+
+	return nil
+}
+
 func (ch *CheckAndHeal) healManyMasters(cRedis *v1beta1.CustomRedis) error {
+	ch.logger.Info("Healing many masters in cluster")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
 
