@@ -75,7 +75,7 @@ func (r *CustomRedisReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// 首次创建，更新 status 为 creating
 	if cRedis.SetDefaultStatus() {
-		logger.V(2).Info("Setting status to creating")
+		logger.V(2).Info("Setting status")
 		if err := r.Status().Update(ctx, cRedis); err != nil {
 			return ctrl.Result{}, err
 		}

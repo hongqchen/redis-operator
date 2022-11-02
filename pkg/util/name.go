@@ -19,13 +19,11 @@ const (
 )
 
 var (
-	masterLabel = map[string]string{"redis.hongqchen": "master"}
-
 	AllPodReadyErr      = errors.New("not all pods are ready")
 	NoMasterErr         = errors.New("cluster has no master")
 	MasterBeElectingErr = errors.New("master is being elected")
 	ManyMastersErr      = errors.New("multiple masters exist")
 	UnknownErr          = errors.New("unknown error")
-
+	DeprecatedErr       = errors.New("deprecated master")
 	//ManyMonitorsOnSentinelErr = errors.New("sentinel cluster listens on several different masters")
 )

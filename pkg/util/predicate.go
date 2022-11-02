@@ -38,6 +38,8 @@ func (AnnotationsOrGenerationChanged) Create(e event.CreateEvent) bool {
 	return false
 }
 
+// Pod 被删除时，触发 reconcile 回调
+
 type PodDeleted struct {
 	predicate.Funcs
 }

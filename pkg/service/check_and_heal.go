@@ -93,7 +93,7 @@ func (ch *CheckAndHeal) healOneMaster(cRedis *v1beta1.CustomRedis, currentMaster
 	// 列表中最后一个 Pod IP 等于当前 master IP
 	// 说明 master 被删除重建过，不应作为集群 master
 	if redisNodes[len(redisNodes)-1].Status.PodIP == currentMaster {
-		return util.NoMasterErr
+		return util.DeprecatedErr
 	}
 
 	return nil

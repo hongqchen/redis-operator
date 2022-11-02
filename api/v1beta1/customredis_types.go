@@ -91,6 +91,11 @@ func (crs *CustomRedisStatus) setDefault(cr *CustomRedis) bool {
 		cr.Status.Phase = util.CustomRedisCreating
 		return true
 	}
+	if cr.Status.Phase == util.CustomRedisRunning {
+		cr.Status.Phase = util.CustomRedisScaling
+		return true
+	}
+
 	return false
 }
 

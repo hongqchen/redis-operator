@@ -45,7 +45,7 @@ func (rh *RedisHandler) syncMasterSlave(cRedis *v1beta1.CustomRedis) error {
 	if err := rh.ensure.EnsureStatefulset(cRedis); err != nil {
 		return err
 	}
-	if err := rh.ensure.EnsurePodReady(cRedis); err != nil {
+	if err := rh.ensure.EnsurePodReadyForStatefulset(cRedis); err != nil {
 		return err
 	}
 	// 额外增加一个方法，为相关联的 Pod 添加 cr 作为第二个 owner
@@ -76,6 +76,9 @@ func (rh *RedisHandler) syncSentinel(cRedis *v1beta1.CustomRedis) error {
 		return err
 	}
 	if err := rh.ensure.EnsureDeployment(cRedis); err != nil {
+		return err
+	}
+	if err := rh.ensure.EnsurePodReadyForDeployment(cRedis); err != nil {
 		return err
 	}
 	if err := rh.ensure.EnsureSentinelMonitor(cRedis); err != nil {

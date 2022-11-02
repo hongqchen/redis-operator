@@ -1,4 +1,4 @@
-apiVersion: hongqchen.com/v1beta1
+apiVersion: redis.hongqchen/v1beta1
 kind: CustomRedis
 metadata:
   name: sentinel-test

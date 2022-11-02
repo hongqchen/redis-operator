@@ -30,8 +30,7 @@ type generater interface {
 	configmapForSentinel(cRedis *v1beta1.CustomRedis) *corev1.ConfigMap
 }
 
-type generate struct {
-}
+type generate struct{}
 
 func newGenerate() *generate {
 	return &generate{}
@@ -62,9 +61,17 @@ func (g *generate) createLabels(cRedis *v1beta1.CustomRedis) map[string]string {
 }
 
 func (g *generate) configmap(cRedis *v1beta1.CustomRedis) *corev1.ConfigMap {
+	cm := cRedis.Spec.RedisConfig
+
+	// 保证 requirepass 和 masterauth 成对出现
+	if _, exists := cm["requirepass"]; exists {
+		if _, exists := cm["masterauth"]; !exists {
+			cm["masterauth"] = cm["requirepass"]
+		}
+	}
+
 	// 将 yaml 格式转为 string
 	var buffer bytes.Buffer
-	cm := cRedis.Spec.RedisConfig
 
 	keys := make([]string, 0, len(cm))
 	for k := range cm {
@@ -226,19 +233,10 @@ func (g *generate) statefulset(cRedis *v1beta1.CustomRedis) *appv1.StatefulSet {
 		},
 	}
 
-	// create statefulset for the first time, add annotations to mark the status
-	//annotations := map[string]string{}
-	//if cRedis.Status.Phase == v1beta1.CustomRedisCreating {
-	//	annotations["hongqchen.com/status"] = "scaling"
-	//} else {
-	//	annotations["hongqchen.com/status"] = "running"
-	//}
-
 	return &appv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      g.getName(cRedis),
-			Namespace: g.getNamespace(cRedis),
-			//Annotations:     annotations,
+			Name:            g.getName(cRedis),
+			Namespace:       g.getNamespace(cRedis),
 			OwnerReferences: g.createOwnerReference(cRedis),
 			Labels:          labels,
 		},
@@ -260,7 +258,6 @@ func (g *generate) statefulset(cRedis *v1beta1.CustomRedis) *appv1.StatefulSet {
 			UpdateStrategy: appv1.StatefulSetUpdateStrategy{
 				Type: appv1.OnDeleteStatefulSetStrategyType,
 			},
-			ServiceName: fmt.Sprintf("%s-headless", cRedis.Name),
 		},
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/hongqchen/redis-operator/api/v1beta1"
 	"github.com/hongqchen/redis-operator/pkg/util"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,7 +20,8 @@ type Ensurer interface {
 	EnsurePodOwner(cRedis *v1beta1.CustomRedis) error
 
 	// 确认资源状态正常，所有 pod ready
-	EnsurePodReady(cRedis *v1beta1.CustomRedis) error
+	EnsurePodReadyForStatefulset(cRedis *v1beta1.CustomRedis) error
+	EnsurePodReadyForDeployment(cRedis *v1beta1.CustomRedis) error
 	// 确认 sentinel 监听了正确 master IP
 	EnsureSentinelMonitor(cRedis *v1beta1.CustomRedis) error
 	// 确认 slave 节点监听的 master 是正确的 IP
@@ -48,30 +48,44 @@ func NewEnsure(cl client.Client, logger logr.Logger) *Ensure {
 
 func (e *Ensure) EnsureConfigmap(cRedis *v1beta1.CustomRedis) error {
 	e.logger.V(1).Info("Ensuring configmap")
-	baseCm := &corev1.ConfigMap{}
+
+	baseCm := make([]*corev1.ConfigMap, 0, 2)
 
 	if cRedis.Spec.ClusterMode == v1beta1.MasterSlave {
-		baseCm = e.generate.configmap(cRedis)
+		baseCm = append(baseCm, e.generate.configmap(cRedis))
 	}
 
 	if cRedis.Spec.ClusterMode == v1beta1.Sentinel {
-		baseCm = e.generate.configmapForSentinel(cRedis)
+		baseCm = append(baseCm, e.generate.configmap(cRedis))
+		baseCm = append(baseCm, e.generate.configmapForSentinel(cRedis))
 	}
 
-	e.logger.V(3).Info(fmt.Sprintf("Configmap info: %+v\n", baseCm))
+	for k := range baseCm {
+		name := baseCm[k].Name
+		namespace := baseCm[k].Namespace
+		namespacedName := fmt.Sprintf("%s/%s", namespace, name)
 
-	if _, err := e.k8sService.GetConfigmap(cRedis.Name, cRedis.Namespace); err != nil {
-		if apierror.IsNotFound(err) {
-			// configmap 不存在，需要创建
-			e.logger.V(2).Info("Configmap not found")
-			return e.k8sService.CreateConfigmap(baseCm)
+		if _, err := e.k8sService.GetConfigmap(name, namespace); err != nil {
+			if apierror.IsNotFound(err) {
+				// configmap 不存在，需要创建
+				e.logger.V(2).Info("Configmap not found", "configmap", namespacedName)
+				if err := e.k8sService.CreateConfigmap(baseCm[k]); err != nil {
+					return err
+				}
+
+				continue
+			}
+			return err
 		}
-		return err
+
+		// configmap 已存在，更新
+		e.logger.V(2).Info("Configmap already exists, need to update it", "configmap", namespacedName)
+		if err := e.k8sService.UpdateConfigmap(baseCm[k]); err != nil {
+			return err
+		}
 	}
 
-	// configmap 已存在，更新
-	e.logger.V(2).Info("Configmap already exists, need to update it")
-	return e.k8sService.UpdateConfigmap(baseCm)
+	return nil
 }
 
 func (e *Ensure) EnsureStatefulset(cRedis *v1beta1.CustomRedis) error {
@@ -132,41 +146,32 @@ func (e *Ensure) EnsureDeployment(cRedis *v1beta1.CustomRedis) error {
 	return e.k8sService.UpdateDeployment(deploy)
 }
 
-func (e *Ensure) EnsurePodReady(cRedis *v1beta1.CustomRedis) error {
-	e.logger.V(1).Info("Ensuring all pods are ready")
-	switch cRedis.Spec.ClusterMode {
-	case v1beta1.MasterSlave:
-		e.logger.V(2).Info("Current mode master-slave")
-		pods, err := e.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
-		if err != nil {
-			return err
-		}
+func (e *Ensure) EnsurePodReadyForDeployment(cRedis *v1beta1.CustomRedis) error {
+	e.logger.V(1).Info("Ensuring all pods for deployment(sentinel nodes) are ready")
+	name := fmt.Sprintf("%s-%s", cRedis.Name, util.SentinelResourceSuffix)
+	namespace := cRedis.Namespace
+	// 判断哨兵节点个数是否满足 spec.sentinelnums 的一半以上
+	sentinelNodes, err := e.k8sService.GetDeploymentReadyPods(name, namespace)
+	if err != nil {
+		return err
+	}
+	if len(sentinelNodes) != int(*cRedis.Spec.SentinelNum) {
+		return util.AllPodReadyErr
+	}
+	return nil
+}
 
-		if len(pods) != int(*cRedis.Spec.Replicas) {
-			return util.AllPodReadyErr
-		}
-		return nil
-	case v1beta1.Sentinel:
-		e.logger.V(2).Info("Current mode sentinel")
-		// 判断 ready redis Pod 数量是否匹配 spec.replices
-		redisNodes, err := e.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
-		if err != nil {
-			return err
-		}
-		if len(redisNodes) != int(*cRedis.Spec.Replicas) {
-			return util.AllPodReadyErr
-		}
-
-		// 判断哨兵节点个数是否满足 spec.sentinelnums 的一半以上
-		sentinelNodes, err := e.k8sService.GetDeploymentReadyPods(fmt.Sprintf("%s-%s", cRedis.Name, util.SentinelResourceSuffix), cRedis.Namespace)
-		if len(sentinelNodes) != int(*cRedis.Spec.SentinelNum) {
-			return util.AllPodReadyErr
-		}
-		return nil
+func (e *Ensure) EnsurePodReadyForStatefulset(cRedis *v1beta1.CustomRedis) error {
+	e.logger.V(1).Info("Ensuring all pods for statefulset(redis nodes) are ready")
+	pods, err := e.k8sService.GetStatefulsetReadyPods(cRedis.Name, cRedis.Namespace)
+	if err != nil {
+		return err
 	}
 
-	return errors.New("unknown cluster mode")
-
+	if len(pods) != int(*cRedis.Spec.Replicas) {
+		return util.AllPodReadyErr
+	}
+	return nil
 }
 
 func (e *Ensure) EnsurePodOwner(cRedis *v1beta1.CustomRedis) error {

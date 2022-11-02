@@ -13,6 +13,7 @@ spec:
     "dir": "/data/redis"
     "port": "6379"
     "appendonly": "yes"
+    "requirepass": "123456"
 #  volumeConfig:
 #    accessModes:
 #      - ReadWriteOnce
