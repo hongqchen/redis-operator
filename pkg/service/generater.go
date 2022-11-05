@@ -53,9 +53,9 @@ func (g *generate) createOwnerReference(cRedis *v1beta1.CustomRedis) []metav1.Ow
 
 func (g *generate) createLabels(cRedis *v1beta1.CustomRedis) map[string]string {
 	var labels = map[string]string{
-		"hongqchen.com/controller": "custom-redis",
-		"hongqchen.com/component":  "database",
-		"hongqchen.com/name":       g.getName(cRedis),
+		"redis.hongqchen/controller": "custom-redis",
+		"redis.hongqchen/component":  "database",
+		"redis.hongqchen/name":       g.getName(cRedis),
 	}
 	return labels
 }
@@ -137,7 +137,8 @@ func (g *generate) statefulset(cRedis *v1beta1.CustomRedis) *appv1.StatefulSet {
 	redisInstancePort, _ := strconv.ParseInt(cRedis.Spec.RedisConfig["port"], 10, 32)
 
 	labels := g.createLabels(cRedis)
-	delete(labels, "hongqchen.com/role")
+	delete(labels, "redis.hongqchen/role")
+	labels["redis.hongqchen/owner-type"] = "statefulset"
 
 	// default mount volumes
 	volumes := []corev1.Volume{
@@ -347,7 +348,7 @@ func (g *generate) service(cRedis *v1beta1.CustomRedis) map[string]*corev1.Servi
 				Ports: []corev1.ServicePort{
 					{
 						Name:     "redis-port",
-						Port:     int32(redisPort),
+						Port:     util.SentinelPort,
 						Protocol: corev1.ProtocolTCP,
 					},
 				},
@@ -367,7 +368,8 @@ func (g *generate) deployment(cRedis *v1beta1.CustomRedis) *appv1.Deployment {
 	pvcNamePrefix := "pvc"
 	namespace := cRedis.Namespace
 	labels := g.createLabels(cRedis)
-	delete(labels, "hongqchen.com/role")
+	delete(labels, "redis.hongqchen/role")
+	labels["redis.hongqchen/owner-type"] = "deployments"
 
 	volumes := []corev1.Volume{
 		{

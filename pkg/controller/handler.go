@@ -81,10 +81,16 @@ func (rh *RedisHandler) syncSentinel(cRedis *v1beta1.CustomRedis) error {
 	if err := rh.ensure.EnsurePodReadyForDeployment(cRedis); err != nil {
 		return err
 	}
+	if err := rh.ensure.EnsurePodOwnerForSentinel(cRedis); err != nil {
+		return err
+	}
 	if err := rh.ensure.EnsureSentinelMonitor(cRedis); err != nil {
 		return err
 	}
 	if err := rh.ensure.EnsureSlaveOfMaster(cRedis); err != nil {
+		return err
+	}
+	if err := rh.ensure.EnsureLabelsForSentinel(cRedis); err != nil {
 		return err
 	}
 

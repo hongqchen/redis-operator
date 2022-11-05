@@ -18,6 +18,7 @@ type Ensurer interface {
 	EnsureDeployment(cRedis *v1beta1.CustomRedis) error
 
 	EnsurePodOwner(cRedis *v1beta1.CustomRedis) error
+	EnsurePodOwnerForSentinel(cRedis *v1beta1.CustomRedis) error
 
 	// 确认资源状态正常，所有 pod ready
 	EnsurePodReadyForStatefulset(cRedis *v1beta1.CustomRedis) error
@@ -28,6 +29,7 @@ type Ensurer interface {
 	EnsureSlaveOfMaster(cRedis *v1beta1.CustomRedis) error
 	// 为不同角色的 Pod 添加 label
 	EnsureLabels(cRedis *v1beta1.CustomRedis) error
+	EnsureLabelsForSentinel(cRedis *v1beta1.CustomRedis) error
 }
 
 type Ensure struct {
@@ -134,7 +136,7 @@ func (e *Ensure) EnsureService(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsureDeployment(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring deployment(sentinel cluster)")
+	e.logger.V(1).Info("Ensuring deployment(sentinel cluster)")
 	deploy := e.generate.deployment(cRedis)
 
 	if _, err := e.k8sService.GetDeployment(fmt.Sprintf("%s-%s", cRedis.Name, util.SentinelResourceSuffix), cRedis.Namespace); err != nil {
@@ -175,33 +177,34 @@ func (e *Ensure) EnsurePodReadyForStatefulset(cRedis *v1beta1.CustomRedis) error
 }
 
 func (e *Ensure) EnsurePodOwner(cRedis *v1beta1.CustomRedis) error {
-	e.logger.V(1).Info("Ensuring a second owner references for pod")
+	e.logger.V(1).Info("Ensuring a second owner references for redis pod")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
-	sentinelName := fmt.Sprintf("%s-%s", cRedis.Name, util.SentinelResourceSuffix)
-
-	allPods := []corev1.Pod{}
 
 	// 获取相关联的 redis Pods
 	pods, err := e.k8sService.GetStatefulsetReadyPods(name, namespace)
 	if err != nil {
 		return err
 	}
-	for _, pod := range pods {
-		allPods = append(allPods, pod)
+
+	return e.addOwnerForPods(cRedis, pods)
+}
+
+func (e *Ensure) EnsurePodOwnerForSentinel(cRedis *v1beta1.CustomRedis) error {
+	e.logger.V(1).Info("Ensuring a second owner references for sentinel pod")
+
+	namespace := cRedis.Namespace
+	sentinelName := fmt.Sprintf("%s-%s", cRedis.Name, util.SentinelResourceSuffix)
+
+	sentinelPods, err := e.k8sService.GetDeploymentReadyPods(sentinelName, namespace)
+	if err != nil {
+		return err
 	}
 
-	// 如果是哨兵模式，哨兵节点 Pod 也添加第二 owner
-	if cRedis.Spec.ClusterMode == v1beta1.Sentinel {
-		sentinelPods, err := e.k8sService.GetDeploymentReadyPods(sentinelName, namespace)
-		if err != nil {
-			return err
-		}
-		for _, sentinelPod := range sentinelPods {
-			allPods = append(allPods, sentinelPod)
-		}
-	}
+	return e.addOwnerForPods(cRedis, sentinelPods)
+}
 
+func (e *Ensure) addOwnerForPods(cRedis *v1beta1.CustomRedis, allPods []corev1.Pod) error {
 	e.logger.V(3).Info(fmt.Sprintf("Pods nums: %d, detail: %+v\n", len(allPods), allPods))
 
 	// 遍历所有 Pod，添加 cr 所属 owner
@@ -212,7 +215,7 @@ func (e *Ensure) EnsurePodOwner(cRedis *v1beta1.CustomRedis) error {
 		// 判断当前 pod 是否已经存在 crd 相关的 OwnerReferences
 		isNeedNewOwner := true
 		for _, own := range storedOwn {
-			if own.Kind == "CustomRedis" && own.Name == name {
+			if own.Kind == "CustomRedis" && own.Name == cRedis.Name {
 				isNeedNewOwner = false
 				break
 			}
@@ -242,7 +245,7 @@ func (e *Ensure) EnsurePodOwner(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsureSentinelMonitor(cRedis *v1beta1.CustomRedis) error {
-	e.logger.Info("Ensuring that sentinel listens to the correct master IP")
+	e.logger.V(1).Info("Ensuring that sentinel listens to the correct master IP")
 	// 获取当前集群中的 master 节点列表
 	// 如果节点个数 ！= 1
 	// 返回错误，重新触发 reconcile
@@ -331,10 +334,9 @@ func (e *Ensure) EnsureSlaveOfMaster(cRedis *v1beta1.CustomRedis) error {
 }
 
 func (e *Ensure) EnsureLabels(cRedis *v1beta1.CustomRedis) error {
-	e.logger.V(1).Info("Ensuring pod's label")
+	e.logger.V(1).Info("Ensuring pod's label for redis")
 	name := cRedis.Name
 	namespace := cRedis.Namespace
-	//sentinelName := fmt.Sprintf("%s-%s", name, util.SentinelResourceSuffix)
 
 	pods, err := e.k8sService.GetStatefulsetReadyPods(name, namespace)
 	if err != nil {
@@ -359,22 +361,28 @@ func (e *Ensure) EnsureLabels(cRedis *v1beta1.CustomRedis) error {
 		}
 	}
 
-	// sentinel 模式，直接为所有 Pod 添加 role: sentinel label
-	//if cRedis.Spec.ClusterMode == v1beta1.Sentinel {
-	//	sentinelPods, err := e.k8sService.GetDeploymentReadyPods(sentinelName, namespace)
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	for _, sentinelPod := range sentinelPods {
-	//		sentinelPodObj := sentinelPod.DeepCopy()
-	//		sentinelPodObj.ObjectMeta.Labels["redis.hongqchen/role"] = "sentinel"
-	//
-	//		if err := e.k8sService.UpdatePodIfExists(sentinelPodObj); err != nil {
-	//			return err
-	//		}
-	//	}
-	//}
+	return nil
+}
+
+func (e *Ensure) EnsureLabelsForSentinel(cRedis *v1beta1.CustomRedis) error {
+	e.logger.V(1).Info("Ensuring pod's label for sentinel")
+	name := cRedis.Name
+	namespace := cRedis.Namespace
+	sentinelName := fmt.Sprintf("%s-%s", name, util.SentinelResourceSuffix)
+
+	sentinelPods, err := e.k8sService.GetDeploymentReadyPods(sentinelName, namespace)
+	if err != nil {
+		return err
+	}
+
+	for _, sentinelPod := range sentinelPods {
+		sentinelPodObj := sentinelPod.DeepCopy()
+		sentinelPodObj.ObjectMeta.Labels["redis.hongqchen/role"] = "sentinel"
+
+		if err := e.k8sService.UpdatePodIfExists(sentinelPodObj); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
